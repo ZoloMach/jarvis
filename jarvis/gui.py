@@ -35,22 +35,15 @@ STATE_COLORS = {
 }
 STATE_TEXT = {
     "chargement": "Démarrage...",
-    "veille": "Dis « Hey {name} » ou clique sur Parler",
+    "veille": "Dis « {name} » ou clique sur Parler",
     "ecoute": "Je t'écoute...",
     "reflexion": "Je réfléchis...",
-    "parle": "Je parle (dis « Hey {name} » pour me couper)",
+    "parle": "Je parle (Arrêter pour me couper)",
     "pause": "Micro coupé",
     "texte": "Écris-moi en bas de la fenêtre",
 }
 STATE_SPEED = {"chargement": 1.5, "veille": 0.6, "ecoute": 2.5, "reflexion": 7, "parle": 2, "pause": 0, "texte": 0.6}
 
-VOICES = {
-    "Henri (homme, France)": "fr-FR-HenriNeural",
-    "Rémy (homme, France)": "fr-FR-RemyMultilingualNeural",
-    "Denise (femme, France)": "fr-FR-DeniseNeural",
-    "Vivienne (femme, France)": "fr-FR-VivienneMultilingualNeural",
-    "Antoine (homme, Québec)": "fr-CA-AntoineNeural",
-}
 MODELS = {
     "Rapide (Claude Sonnet)": "claude-sonnet-5-5",
     "Maximale (Claude Opus, plus lent)": "claude-opus-5-5",
@@ -320,11 +313,32 @@ class SettingsDialog(Dialog):
         self.user.pack(padx=24, anchor="w")
         self.user.insert(0, config.USER_NAME)
 
+        from .voice import EDGE_VOICES
+
+        self.voices = dict(EDGE_VOICES)
         self.label("Voix de Jarvis")
-        current_voice = next((k for k, v in VOICES.items() if v == config.TTS_VOICE), list(VOICES)[0])
-        self.voice = ctk.CTkOptionMenu(self.body, values=list(VOICES), width=400)
-        self.voice.set(current_voice)
-        self.voice.pack(padx=24, anchor="w")
+        vrow = ctk.CTkFrame(self.body, fg_color="transparent")
+        vrow.pack(fill="x", padx=24)
+        self.voice = ctk.CTkOptionMenu(vrow, values=list(self.voices), width=300)
+        self.voice.set(next((k for k, v in self.voices.items() if v == config.TTS_VOICE), list(self.voices)[0]))
+        self.voice.pack(side="left")
+        ctk.CTkButton(vrow, text="Écouter", width=90, fg_color="#1f2a3d", hover_color="#2a3a55",
+                      command=self.preview_voice).pack(side="right")  # fmt: skip
+
+        self.label("Voix encore plus humaines (facultatif) : clé ElevenLabs, compte gratuit sur elevenlabs.io")
+        erow = ctk.CTkFrame(self.body, fg_color="transparent")
+        erow.pack(fill="x", padx=24)
+        self.eleven = ctk.CTkEntry(erow, width=250, show="•", placeholder_text="sk_...")
+        self.eleven.pack(side="left")
+        if config.ELEVENLABS_API_KEY:
+            self.eleven.insert(0, config.ELEVENLABS_API_KEY)
+        self.eleven_btn = ctk.CTkButton(erow, text="Ajouter ses voix", width=140, fg_color="#1f2a3d",
+                                        hover_color="#2a3a55", command=self.load_eleven)  # fmt: skip
+        self.eleven_btn.pack(side="right")
+        self.eleven_msg = ctk.CTkLabel(self.body, text="", text_color=MUTED, wraplength=400, justify="left")
+        self.eleven_msg.pack(anchor="w", padx=24)
+        if config.ELEVENLABS_API_KEY:
+            self.load_eleven(quiet=True)
 
         self.label("Intelligence")
         current_model = next((k for k, v in MODELS.items() if v == config.MODEL), list(MODELS)[0])
@@ -332,10 +346,16 @@ class SettingsDialog(Dialog):
         self.model.set(current_model)
         self.model.pack(padx=24, anchor="w")
 
-        self.label("Sensibilité au « Hey Jarvis » (à droite = se réveille plus facilement)")
-        self.sens = ctk.CTkSlider(self.body, from_=0.2, to=0.85, width=400)
-        self.sens.set(1.05 - config.WAKEWORD_THRESHOLD)
-        self.sens.pack(padx=24, pady=4, anchor="w")
+        self.label("Réveil")
+        self.wake_name = ctk.CTkSwitch(self.body, text=f"Quand on dit « {config.NAME} » en début de phrase",
+                                       text_color=TEXT)  # fmt: skip
+        if config.WAKE_BY_NAME:
+            self.wake_name.select()
+        self.wake_name.pack(anchor="w", padx=24, pady=(4, 4))
+        self.clap = ctk.CTkSwitch(self.body, text="Double clap : routine de démarrage", text_color=TEXT)
+        if config.CLAP_WAKE:
+            self.clap.select()
+        self.clap.pack(anchor="w", padx=24, pady=(4, 4))
 
         self.label("Mot de passe OBS (Outils > Paramètres du serveur WebSocket)")
         self.obs = ctk.CTkEntry(self.body, width=400, show="•")
@@ -374,6 +394,50 @@ class SettingsDialog(Dialog):
         lbl = ctk.CTkLabel(self.body, text=text, text_color=kw.get("color", TEXT), wraplength=400, justify="left")
         lbl.pack(anchor="w", padx=24, pady=(10, 2))
         return lbl
+
+    def preview_voice(self):
+        engine = getattr(self.master, "engine", None)
+        if engine and engine.speaker:
+            engine.speaker.preview(self.voices[self.voice.get()])
+        else:
+            self.eleven_msg.configure(text="Jarvis démarre encore : réessaie dans un instant.")
+
+    def load_eleven(self, quiet=False):
+        """Vérifie la clé ElevenLabs et ajoute les voix du compte à la liste."""
+        key = self.eleven.get().strip()
+        if not key:
+            self.eleven_msg.configure(text="Colle d'abord ta clé (elevenlabs.io > My Account > API Keys).")
+            return
+        self.eleven_btn.configure(state="disabled", text="Vérification...")
+
+        def work():
+            from .voice import elevenlabs_voices
+
+            try:
+                voices, err = elevenlabs_voices(key), None
+            except Exception as e:  # noqa: BLE001
+                voices, err = {}, str(e)
+            self.after(0, lambda: self._eleven_loaded(key, voices, err, quiet))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _eleven_loaded(self, key, voices, err, quiet):
+        if not self.winfo_exists():
+            return
+        self.eleven_btn.configure(state="normal", text="Ajouter ses voix")
+        if err:
+            self.eleven_msg.configure(text=f"Clé refusée ou ElevenLabs injoignable ({err[:120]}).", text_color=ERROR)
+            return
+        if key != config.ELEVENLABS_API_KEY:
+            config.save(ELEVENLABS_API_KEY=key)  # clé vérifiée : « Écouter » peut s'en servir tout de suite
+        self.voices = {**voices, **{k: v for k, v in self.voices.items() if not v.startswith("elevenlabs:")}}
+        self.voice.configure(values=list(self.voices))
+        current = next((k for k, v in self.voices.items() if v == config.TTS_VOICE), None)
+        if not quiet and voices:
+            current = list(voices)[0]
+        self.voice.set(current or list(self.voices)[0])
+        self.eleven_msg.configure(text=f"{len(voices)} voix ElevenLabs ajoutées en haut de la liste. "
+                                  "Choisis-en une, écoute-la puis enregistre.", text_color=MUTED)  # fmt: skip
 
     def open_folder(self):
         """Ouvre le dossier de travail de Jarvis : sa fiche, sa mémoire, ses compétences et ses projets."""
@@ -424,9 +488,11 @@ class SettingsDialog(Dialog):
         values = dict(
             JARVIS_BRAIN=brain,
             JARVIS_USER_NAME=self.user.get().strip() or "Michel",
-            JARVIS_VOICE=VOICES[self.voice.get()],
+            JARVIS_VOICE=self.voices[self.voice.get()],
+            ELEVENLABS_API_KEY=self.eleven.get().strip(),
+            JARVIS_WAKE_BY_NAME="1" if self.wake_name.get() else "0",
+            JARVIS_CLAP="1" if self.clap.get() else "0",
             JARVIS_MODEL=MODELS[self.model.get()],
-            JARVIS_WAKEWORD_THRESHOLD=f"{1.05 - self.sens.get():.2f}",
             OBS_PASSWORD=self.obs.get(),
             JARVIS_SETUP_DONE="1",
             JARVIS_AUTO_UPDATE="1" if self.auto_update.get() else "0",

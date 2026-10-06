@@ -2,6 +2,13 @@
 
 Chaque version publiée ici est installée automatiquement au lancement de Jarvis.
 
+## 1.5.0
+- Réveil : dis simplement « Jarvis » en début de phrase, avec ton accent (« Jarvis, ouvre Discord »). L'ancien « Hey Jarvis » ne comprenait que la prononciation anglaise. La première fois, ce réveil met quelques minutes à être prêt (téléchargement de 150 Mo).
+- Double clap : tape deux fois dans tes mains et Jarvis lance ta routine de démarrage. La première fois, il te demande ce qu'elle doit contenir.
+- Nouvelle voix par défaut, plus naturelle (Rémy). Réglages : 12 voix au choix avec un bouton « Écouter », et les voix ElevenLabs, encore plus humaines, si tu ajoutes ta clé (compte gratuit).
+- Jarvis parle moins : il ne commente plus chaque étape, il dit le résultat à la fin.
+- Il regarde et clique directement sur l'écran du haut, sans y ramener la fenêtre.
+
 ## 1.4.1
 - Correction : Jarvis fonctionne aussi avec une version plus ancienne de Claude Code (erreur « unknown option »), et la met à jour tout seul en arrière-plan.
 

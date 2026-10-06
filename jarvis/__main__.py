@@ -4,7 +4,7 @@ import sys
 
 from . import config, tools
 from .brain import Brain
-from .engine import NAME_RE, YES, is_stop, norm  # noqa: F401
+from .engine import YES, is_stop, norm
 from .voice import BEEP_SLEEP, BEEP_WAKE, Speaker
 
 
@@ -29,7 +29,7 @@ def text_mode(brain, speaker):
 
 
 def voice_mode(brain, speaker, use_wakeword):
-    from .ears import Ears
+    from .ears import Ears, has_name
 
     ears = Ears(use_wakeword=use_wakeword)
 
@@ -52,7 +52,7 @@ def voice_mode(brain, speaker, use_wakeword):
             speaker.say("Très bien, j'annule.")
         return ok
 
-    hint = f"dis « Hey {config.NAME} »" if use_wakeword else f"commence ta phrase par « {config.NAME} »"
+    hint = f"dis « {config.NAME} »" if use_wakeword else f"commence ta phrase par « {config.NAME} »"
     speaker.say(f"{config.NAME} en ligne. À votre service, {config.USER_NAME}.")
     speaker.wait()
     print(f"\n[écoute] Prêt : {hint}. « Merci {config.NAME} » pour terminer une conversation. Ctrl+C pour quitter.\n")
@@ -80,7 +80,7 @@ def voice_mode(brain, speaker, use_wakeword):
         if not text:
             continue
         if not use_wakeword and not in_conversation:
-            if not NAME_RE.search(text):
+            if not has_name(text):
                 continue  # on ne parlait pas à Jarvis
             speaker.beep(BEEP_WAKE)
         if is_stop(text):

@@ -69,6 +69,24 @@ En quatre phrases au plus, à voix haute :
 3. Les minuteurs en cours (mcp__jarvis__minuteurs) et ce qui est noté dans memoire/a-faire.md s'il existe.
 4. Une actualité qui peut l'intéresser d'après ses centres d'intérêt (CLAUDE.md).
 """,
+    "routine-demarrage": """---
+name: routine-demarrage
+description: Lancer la routine de démarrage de {user} quand {user} tape deux fois dans ses mains (message « Double clap »), ou quand il dit « lance ma routine », « on démarre », « mode travail ». Aussi pour la modifier (« ajoute OBS à ma routine »).
+---
+
+La routine est décrite dans memoire/routine.md.
+
+1. Si ce fichier n'existe pas : demande en une phrase ce que {user} veut à chaque double clap (applications et sur
+   quel écran, sites, musique, point du jour). À sa réponse, écris memoire/routine.md (une étape par ligne) et
+   lance-la.
+2. Sinon, exécute chaque étape dans l'ordre, sans rien dire entre les étapes : applications avec
+   mcp__jarvis__ouvrir_application (paramètre ecran quand l'étape le précise), sites et fichiers avec
+   mcp__jarvis__ouvrir, fenêtres déjà ouvertes avec mcp__jarvis__placer_fenetre.
+3. À la fin, une seule phrase : un salut adapté à l'heure et ce qui est prêt. Si la routine prévoit un point du
+   jour, fais-le avec la compétence briefing à la place.
+
+Pour modifier la routine, édite memoire/routine.md puis confirme en une phrase.
+""",
     "nouvelle-competence": """---
 name: nouvelle-competence
 description: Apprendre une nouvelle façon de faire quand {user} dit « apprends à... », « crée-toi une compétence pour... », ou quand il répète souvent la même demande en plusieurs étapes.

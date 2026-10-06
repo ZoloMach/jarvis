@@ -9,7 +9,6 @@ L'interface reçoit les événements par `post(type, données)` :
   confirm -> (action, détails, holder) : demande de confirmation ; l'interface remplit holder["ok"] puis holder["event"].set()
 """
 import queue
-import re
 import threading
 import time
 import traceback
@@ -22,7 +21,8 @@ from .voice import BEEP_SLEEP, BEEP_WAKE, Speaker
 STOP_WORDS = ("merci jarvis", "c'est tout", "ce sera tout", "au revoir", "bonne nuit", "laisse tomber", "stop jarvis")
 YES = ("oui", "ouais", "vas-y", "vas y", "confirme", "d'accord", "ok", "go", "fais-le", "fais le", "absolument", "yes")
 NO = ("non", "annule", "surtout pas", "stop", "arrete")
-NAME_RE = re.compile(r"\b(jarvis|jarvi|jervis|djarvis|charvis)\b", re.I)
+# Envoyé au cerveau quand on tape deux fois dans ses mains (compétence « routine-demarrage » du dossier de travail).
+ROUTINE_REQUEST = "Double clap : lance ma routine de démarrage."
 
 
 def norm(s):
@@ -133,7 +133,9 @@ class Engine:
             self.post("error", f"Micro indisponible ({e}). Tu peux quand même m'écrire en bas de la fenêtre.")
         self.say(f"{config.NAME} en ligne. À votre service, {config.USER_NAME}.")
         if self.ears:
-            self.post("info", f"Dis « Hey {config.NAME} » ou clique sur Parler.")
+            clap = " Tape deux fois dans tes mains pour ta routine de démarrage." if config.CLAP_WAKE else ""
+            self.post("info", f"Dis « {config.NAME} » en début de phrase (« {config.NAME}, ouvre Discord ») "
+                      f"ou clique sur Parler.{clap}")  # fmt: skip
             self._voice_loop()
         else:
             self.post("state", "texte")
@@ -163,23 +165,38 @@ class Engine:
                     time.sleep(0.05)
                     continue
 
+                text = None
                 if not in_conversation:
                     self.post("state", "veille")
-                    woke = self.ears.wait_wakeword(
+                    woke = self.ears.wait_wake(
                         interrupt=lambda: self.ptt.is_set() or not self.mic_enabled or self.busy.is_set()
                     )
-                    if not woke and not self.ptt.is_set():
+                    if woke is None and not self.ptt.is_set():
                         continue
                     self.ptt.clear()
                     self.speaker.stop()
+                    if woke and woke[0] == "nom":
+                        from .ears import after_name
+
+                        # « Jarvis, ouvre Discord » : la demande est déjà dans la phrase qui l'a réveillé.
+                        self.post("state", "reflexion")
+                        heard = self.ears.transcribe(woke[1])
+                        print(f"[écoute] {len(woke[1]) / 16000:.1f} s d'audio au réveil : {heard!r}", flush=True)
+                        if is_stop(heard):  # « Merci Jarvis » dit après coup : rien à faire
+                            continue
+                        if len(after_name(heard)) >= 4:
+                            text = heard
+                    elif woke and woke[0] == "clap":
+                        text = ROUTINE_REQUEST
                     self.speaker.beep(BEEP_WAKE)
                     self.speaker.wait()
                     timeout = 6
                 else:
                     timeout = config.FOLLOWUP_SECONDS
 
-                self.post("state", "ecoute")
-                text = self._listen(timeout)
+                if text is None:
+                    self.post("state", "ecoute")
+                    text = self._listen(timeout)
                 if text is None:
                     if in_conversation:
                         self.speaker.beep(BEEP_SLEEP)

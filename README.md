@@ -1,23 +1,26 @@
 # Jarvis : assistant personnel vocal pour ton PC
 
-Jarvis t'écoute en permanence, se réveille quand tu dis **« Hey Jarvis »**, te répond à voix haute et agit sur ton ordinateur : ouvrir des applis, voir ton écran, cliquer, taper, lancer tes jeux, enregistrer avec OBS, monter tes vidéos, gérer tes fichiers, régler le son, faire des recherches, programmer des rappels... Et quand il lui manque une capacité, il peut **écrire lui-même un nouvel outil**.
+Jarvis t'écoute en permanence, se réveille quand tu commences une phrase par **« Jarvis »** (« Jarvis, ouvre Discord »), te répond à voix haute et agit sur ton ordinateur : ouvrir des applis, voir ton écran, cliquer, taper, lancer tes jeux, enregistrer avec OBS, monter tes vidéos, gérer tes fichiers, régler le son, faire des recherches, programmer des rappels... Et quand il lui manque une capacité, il peut **écrire lui-même un nouvel outil**.
 
 ```
- Micro ──► Mot d'éveil « Hey Jarvis » (openWakeWord, local)
+ Micro ──► Réveil : son nom en début de phrase (petit Whisper local), « Hey Jarvis » à l'anglaise
+           (openWakeWord, local) ou double clap (routine de démarrage)
        ──► Transcription (Whisper, local)
        ──► Cerveau : Claude (ton abonnement, via Claude Code) + ~50 outils pour piloter le PC
-       ──► Voix (Edge TTS, voix française naturelle)
+       ──► Voix (Edge TTS gratuit, ou ElevenLabs avec ta clé pour une voix plus humaine)
 ```
 
-Après sa réponse, Jarvis continue d'écouter quelques secondes : tu enchaînes sans redire « Hey Jarvis ». Dis « Hey Jarvis » pendant qu'il parle pour le couper, et « Merci Jarvis » pour terminer.
+Après sa réponse, Jarvis continue d'écouter quelques secondes : tu enchaînes sans redire son nom. Le bouton « Arrêter » le coupe, et « Merci Jarvis » termine la conversation.
+
+Tape **deux fois dans tes mains** : Jarvis lance ta routine de démarrage (applications sur les bons écrans, musique, point du jour). La première fois, il te demande ce qu'elle doit contenir et la note dans `Documents\Jarvis\memoire\routine.md`.
 
 ## Installation (Windows 10/11)
 
 1. Télécharge **`Installer-Jarvis.exe`** et double-clique dessus. Si Windows affiche « Windows a protégé votre ordinateur », clique sur **Informations complémentaires** puis **Exécuter quand même** (l'installeur n'est pas signé par un éditeur payant). L'installation télécharge Python et les composants : garde Internet branché quelques minutes.
 2. Double-clique sur l'icône **Jarvis** apparue sur ton bureau. La première fois, clique sur **Connecter mon abonnement** : une fenêtre et ton navigateur s'ouvrent, connecte-toi à ton compte Claude (Pro ou Max), puis clique sur « C'est parti ».
-3. Dis **« Hey Jarvis »** ou clique sur **Parler**. Tu peux aussi lui écrire en bas de la fenêtre.
+3. Dis **« Jarvis »** en début de phrase ou clique sur **Parler**. Tu peux aussi lui écrire en bas de la fenêtre.
 
-Au tout premier lancement, Jarvis télécharge ses modèles de reconnaissance vocale (environ 500 Mo) : il met quelques minutes à être prêt. Les réglages (voix, intelligence, sensibilité, mot de passe OBS, lancement au démarrage de Windows) sont dans le bouton **Réglages** de la fenêtre. Pour le désinstaller : Paramètres Windows > Applications > Jarvis.
+Au tout premier lancement, Jarvis télécharge ses modèles de reconnaissance vocale (environ 500 Mo) : il met quelques minutes à être prêt. Les réglages (voix avec bouton « Écouter », intelligence, réveil, mot de passe OBS, lancement au démarrage de Windows) sont dans le bouton **Réglages** de la fenêtre. Pour le désinstaller : Paramètres Windows > Applications > Jarvis.
 
 **Dossier de travail** : Jarvis range son travail dans `Documents\Jarvis` (bouton « Dossier de travail » des Réglages) : `CLAUDE.md` est sa fiche (qui tu es, comment il doit travailler : il la relit à chaque demande et tu peux la modifier), `projets\` reçoit les applications et documents qu'il crée, `memoire\` ses notes, `.claude\skills\` ses compétences (post LinkedIn, point du jour, petite application...). Dis-lui « apprends à... » pour qu'il s'en écrive une nouvelle. Ce dossier sert au mode abonnement (Claude Code).
 
@@ -34,7 +37,7 @@ Publier une correction : modifier le code, augmenter le numéro dans `VERSION`, 
 ## Ce que tu peux lui demander
 
 **Travailler**
-- « Hey Jarvis, ouvre Chrome et cherche les horaires de la Poste. »
+- « Jarvis, ouvre Chrome et cherche les horaires de la Poste. »
 - « Lis ce qu'il y a dans mon presse-papiers et résume-le. »
 - « Regarde mon écran, c'est quoi cette erreur ? »
 - « Range les PDF de mon dossier Téléchargements dans Documents/Factures. »
@@ -90,20 +93,21 @@ Il est chargé au prochain démarrage.
 
 - `JARVIS_MODEL` : `claude-sonnet-5-5` (rapide, conseillé pour la voix) ou `claude-opus-5-5` (plus malin, plus lent et plus cher).
 - `JARVIS_WHISPER_MODEL` : `small` par défaut ; `medium` ou `large-v3` si tu as une carte graphique NVIDIA (meilleure compréhension) ; `base` si le PC est lent.
-- `JARVIS_VOICE` : autres voix françaises, par exemple `fr-FR-DeniseNeural`, `fr-FR-RemyMultilingualNeural`, `fr-CA-AntoineNeural`.
-- `JARVIS_WAKEWORD_THRESHOLD` : baisse-le (0.3) s'il ne t'entend pas, monte-le (0.7) s'il se réveille tout seul.
+- `JARVIS_VOICE` : `fr-FR-RemyMultilingualNeural` par défaut ; toute voix Edge (`fr-FR-VivienneMultilingualNeural`, `fr-CA-ThierryNeural`...) ou `elevenlabs:<identifiant>` avec `ELEVENLABS_API_KEY` (compte gratuit sur elevenlabs.io, environ 10 minutes de voix par mois).
+- `JARVIS_WAKE_BY_NAME` / `JARVIS_WAKE_WHISPER_MODEL` : réveil par le nom (`1`, modèle `base`). Le modèle « Hey Jarvis » d'openWakeWord ne reconnaît que la prononciation anglaise ; `JARVIS_WAKEWORD_THRESHOLD` règle sa sensibilité.
+- `JARVIS_CLAP` / `JARVIS_CLAP_MIN_PEAK` : double clap (`0` pour le couper) ; monte `JARVIS_CLAP_MIN_PEAK` (4000) s'il se déclenche tout seul, baisse-le (1500) s'il n'entend pas tes claquements.
 - `JARVIS_FOLLOWUP_SECONDS` : durée d'écoute après chaque réponse.
 
 ## Coût
 
-Par défaut, Jarvis réfléchit avec **ton abonnement Claude (Pro ou Max)** grâce à Claude Code, installé avec lui : aucun frais en plus, ses demandes comptent simplement dans les limites de ton abonnement. Whisper, le mot d'éveil et la voix sont gratuits.
+Par défaut, Jarvis réfléchit avec **ton abonnement Claude (Pro ou Max)** grâce à Claude Code, installé avec lui : aucun frais en plus, ses demandes comptent simplement dans les limites de ton abonnement. Whisper, le réveil et la voix Edge sont gratuits ; une voix ElevenLabs est gratuite jusqu'à environ 10 minutes par mois.
 
 Dans les Réglages, tu peux passer en mode **clé API** (plus rapide de 2 à 3 secondes, mais facturé à l'usage en plus de l'abonnement : quelques centimes par demande).
 
 ## Dépannage
 
-- **Il ne m'entend pas** : vérifie le micro par défaut dans Windows (Paramètres > Son), baisse `JARVIS_WAKEWORD_THRESHOLD`.
-- **Il s'entend lui-même parler** : utilise un casque, ou monte le seuil.
+- **Il ne m'entend pas** : vérifie le micro par défaut dans Windows (Paramètres > Son) et commence ta phrase par « Jarvis ». Au premier lancement, le réveil par le nom attend la fin du téléchargement de son modèle (150 Mo).
+- **Il s'entend lui-même parler** : utilise un casque.
 - **Pas de voix** : Edge TTS a besoin d'Internet ; sinon Jarvis bascule sur la voix Windows.
 - **Erreur pip sur une bibliothèque** : utilise Python 3.11 ou 3.12 (3.13 n'a pas encore toutes les dépendances).
 - **OBS ne répond pas** : OBS doit être ouvert, WebSocket activé, mot de passe correct.

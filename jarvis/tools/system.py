@@ -138,40 +138,95 @@ def lire_page_web(url):
     return text[:12000]
 
 
+SCREEN_PARAM = {
+    "type": "string",
+    "description": "Écran à regarder si ce n'est pas le principal : 'haut', 'bas', 'gauche', 'droite', 'autre' "
+    "ou son numéro (voir lister_ecrans)",
+}
+
+
+def _screen(ecran):
+    """(écran choisi, message d'erreur) ; (None, None) pour l'écran principal."""
+    if not ecran or not IS_WINDOWS:
+        return None, None
+    _pyautogui()  # coordonnées en vrais pixels, même avec une mise à l'échelle Windows
+    monitors = _monitors()
+    monitor = _pick_monitor(monitors, ecran)
+    if monitor is None:
+        listing = "; ".join(f"{i} : {m['position']} ({m['nom']})" for i, m in enumerate(monitors, 1))
+        return None, f"Écran « {ecran} » introuvable. Écrans branchés : {listing}."
+    return (None if monitor["principal"] else monitor), None
+
+
 @tool(
     "Prend une capture d'écran et te la montre, pour voir ce que l'utilisateur a à l'écran "
-    "(utile avant de cliquer, pour lire un message d'erreur, aider dans un jeu, etc.).",
+    "(utile avant de cliquer, pour lire un message d'erreur, aider dans un jeu, etc.). Regarde directement l'écran "
+    "voulu avec le paramètre ecran, sans déplacer de fenêtre.",
+    {"ecran": SCREEN_PARAM},
 )
-def regarder_ecran():
+def regarder_ecran(ecran=None):
     pg = _pyautogui()
-    img = pg.screenshot()
+    monitor, error = _screen(ecran)
+    if error:
+        return error
+    if monitor:
+        from PIL import ImageGrab
+
+        box = (monitor["x"], monitor["y"], monitor["x"] + monitor["w"], monitor["y"] + monitor["h"])
+        img = ImageGrab.grab(bbox=box, all_screens=True)
+    else:
+        img = pg.screenshot()
     w, h = img.size
     img.thumbnail((1568, 1568))
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=80)
     data = base64.standard_b64encode(buf.getvalue()).decode()
     sx, sy = w / img.size[0], h / img.size[1]
+    where = f" et passe ecran='{ecran}' à cliquer" if monitor else ""
     return [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}},
         {
             "type": "text",
-            "text": f"Écran réel {w}x{h}. Image réduite à {img.size[0]}x{img.size[1]} : "
-            f"pour cliquer, multiplie x par {sx:.3f} et y par {sy:.3f}.",
+            "text": f"Écran {'« ' + ecran + ' » ' if monitor else ''}réel {w}x{h}. Image réduite à "
+            f"{img.size[0]}x{img.size[1]} : pour cliquer, multiplie x par {sx:.3f} et y par {sy:.3f}{where}.",
         },
     ]
 
 
+def _click_windows(x, y, button, clicks):
+    """Clic à une position de tout le bureau, y compris un écran placé au-dessus ou à gauche (coordonnées négatives)."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    down, up = {"left": (0x2, 0x4), "right": (0x8, 0x10), "middle": (0x20, 0x40)}[button]
+    user32.SetCursorPos(int(x), int(y))
+    time.sleep(0.05)
+    for _ in range(clicks):
+        user32.mouse_event(down, 0, 0, 0, 0)
+        user32.mouse_event(up, 0, 0, 0, 0)
+        time.sleep(0.05)
+
+
 @tool(
-    "Clique à une position de l'écran (coordonnées réelles en pixels).",
+    "Clique à une position de l'écran (coordonnées réelles en pixels). Pour un autre écran que le principal, "
+    "donne les coordonnées dans cet écran et passe le même ecran qu'à regarder_ecran.",
     {
         "x": {"type": "integer"},
         "y": {"type": "integer"},
         "bouton": {"type": "string", "enum": ["left", "right", "middle"]},
         "double": {"type": "boolean"},
+        "ecran": SCREEN_PARAM,
     },
+    required=["x", "y"],
 )
-def cliquer(x, y, bouton="left", double=False):
+def cliquer(x, y, bouton="left", double=False, ecran=None):
     pg = _pyautogui()
+    monitor, error = _screen(ecran)
+    if error:
+        return error
+    if monitor:
+        _click_windows(monitor["x"] + x, monitor["y"] + y, bouton, 2 if double else 1)
+        return f"Clic {bouton} en ({x}, {y}) sur l'écran « {ecran} »."
     pg.click(x, y, clicks=2 if double else 1, button=bouton)
     return f"Clic {bouton} en ({x}, {y})."
 
@@ -433,7 +488,7 @@ def fermer_programme(processus):
     "Permet de faire presque tout ce qui n'a pas d'outil dédié.",
     {"commande": {"type": "string"}, "timeout": {"type": "integer", "description": "Secondes, défaut 60"}},
     sensitive=True,
-    label="lancer une commande sur ton PC",
+    label="lancer une commande sur le PC",
 )
 def executer_commande(commande, timeout=60):
     cmd = ["powershell", "-NoProfile", "-Command", commande] if IS_WINDOWS else ["bash", "-lc", commande]

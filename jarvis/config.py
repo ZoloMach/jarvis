@@ -36,18 +36,25 @@ def reload():
     # Dossier de travail (fiche, mémoire, compétences, projets) ; par défaut Documents/Jarvis (voir workspace.py).
     g["WORKSPACE"] = get("JARVIS_WORKSPACE")
 
-    # Écoute
+    # Écoute. Réveil : « Hey Jarvis » à l'anglaise (openWakeWord), le nom dit en début de phrase (petit Whisper,
+    # marche avec l'accent français) et le double clap, qui lance la routine de démarrage.
     g["WAKEWORD_MODEL"] = get("JARVIS_WAKEWORD", "hey_jarvis")
     g["WAKEWORD_THRESHOLD"] = float(get("JARVIS_WAKEWORD_THRESHOLD", "0.5"))
+    g["WAKE_BY_NAME"] = get("JARVIS_WAKE_BY_NAME", "1") == "1"
+    g["WAKE_WHISPER_MODEL"] = get("JARVIS_WAKE_WHISPER_MODEL", "base")
+    g["CLAP_WAKE"] = get("JARVIS_CLAP", "1") == "1"
+    g["CLAP_MIN_PEAK"] = int(get("JARVIS_CLAP_MIN_PEAK", "2500"))
     g["WHISPER_MODEL"] = get("JARVIS_WHISPER_MODEL", "small")
     g["WHISPER_DEVICE"] = get("JARVIS_WHISPER_DEVICE", "cpu")  # cpu, cuda ou auto
     g["LANGUAGE"] = get("JARVIS_LANGUAGE", "fr")
     # Secondes pendant lesquelles Jarvis continue d'écouter sans mot d'éveil après avoir répondu.
     g["FOLLOWUP_SECONDS"] = float(get("JARVIS_FOLLOWUP_SECONDS", "8"))
 
-    # Voix
-    g["TTS_VOICE"] = get("JARVIS_VOICE", "fr-FR-HenriNeural")
-    g["TTS_RATE"] = get("JARVIS_VOICE_RATE", "+8%")
+    # Voix : une voix Edge (gratuite) ou « elevenlabs:<identifiant> » avec une clé ElevenLabs (voix plus humaines).
+    g["TTS_VOICE"] = get("JARVIS_VOICE", "fr-FR-RemyMultilingualNeural")
+    g["TTS_RATE"] = get("JARVIS_VOICE_RATE", "+0%")
+    g["ELEVENLABS_API_KEY"] = get("ELEVENLABS_API_KEY", "")
+    g["ELEVENLABS_MODEL"] = get("ELEVENLABS_MODEL", "eleven_flash_v2_5")
 
     # Outils
     g["OBS_HOST"] = get("OBS_HOST", "localhost")
