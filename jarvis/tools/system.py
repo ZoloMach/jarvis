@@ -9,6 +9,7 @@ import time
 import urllib.parse
 import webbrowser
 
+from .. import config
 from . import tool
 
 IS_WINDOWS = platform.system() == "Windows"
@@ -40,12 +41,24 @@ def infos_systeme():
     )
 
 
+ECRAN_PARAM = {
+    "type": "string",
+    "description": "Écran où afficher la fenêtre, si l'utilisateur en précise un : 'haut', 'bas', 'gauche', "
+    "'droite', 'principal', 'grand', 'autre' ou son numéro (voir lister_ecrans)",
+}
+
+
 @tool(
     "Ouvre une application installée par son nom (ex : 'chrome', 'spotify', 'discord', 'obs', 'premiere', 'davinci resolve', 'steam', 'bloc-notes'). "
-    "Sous Windows, passe par le menu Démarrer si le nom exact n'est pas connu.",
-    {"nom": {"type": "string", "description": "Nom de l'application"}},
+    "Sous Windows, passe par le menu Démarrer si le nom exact n'est pas connu. Peut l'afficher sur un écran précis.",
+    {"nom": {"type": "string", "description": "Nom de l'application"}, "ecran": ECRAN_PARAM},
+    required=["nom"],
 )
-def ouvrir_application(nom):
+def ouvrir_application(nom, ecran=None):
+    if ecran and IS_WINDOWS:
+        before = {w._hWnd for w in _windows()}
+        message = ouvrir_application(nom)
+        return f"{message} {_place_new_window(nom, before, ecran)}"
     exe = shutil.which(nom)
     if exe:
         subprocess.Popen([exe])
@@ -71,10 +84,16 @@ def ouvrir_application(nom):
 
 
 @tool(
-    "Ouvre une URL ou un fichier/dossier avec le programme par défaut.",
-    {"cible": {"type": "string", "description": "URL, chemin de fichier ou de dossier"}},
+    "Ouvre une URL ou un fichier/dossier avec le programme par défaut, éventuellement sur un écran précis.",
+    {"cible": {"type": "string", "description": "URL, chemin de fichier ou de dossier"}, "ecran": ECRAN_PARAM},
+    required=["cible"],
 )
-def ouvrir(cible):
+def ouvrir(cible, ecran=None):
+    if ecran and IS_WINDOWS:
+        before = {w._hWnd for w in _windows()}
+        message = ouvrir(cible)
+        hint = os.path.splitext(os.path.basename(cible.rstrip("/\\")))[0] if "://" not in cible else ""
+        return f"{message} {_place_new_window(hint, before, ecran)}"
     if cible.startswith(("http://", "https://", "steam://", "mailto:")):
         webbrowser.open(cible)
     elif IS_WINDOWS:
@@ -232,6 +251,164 @@ def activer_fenetre(titre):
         w.restore()
     w.activate()
     return f"Fenêtre '{w.title}' activée."
+
+
+# --- Plusieurs écrans ---
+def _monitors():
+    """Écrans branchés, l'écran principal d'abord : position, taille, zone utile (sans la barre des tâches), nom."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+
+    class MONITORINFOEXW(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT),
+                    ("dwFlags", wintypes.DWORD), ("szDevice", wintypes.WCHAR * 32)]  # fmt: skip
+
+    class DISPLAY_DEVICEW(ctypes.Structure):  # noqa: N801
+        _fields_ = [("cb", wintypes.DWORD), ("DeviceName", wintypes.WCHAR * 32), ("DeviceString", wintypes.WCHAR * 128),
+                    ("StateFlags", wintypes.DWORD), ("DeviceID", wintypes.WCHAR * 128),
+                    ("DeviceKey", wintypes.WCHAR * 128)]  # fmt: skip
+
+    found = []
+    proc_type = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT),
+                                   wintypes.LPARAM)  # fmt: skip
+
+    def callback(hmon, hdc, rect, data):
+        info = MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(MONITORINFOEXW)
+        user32.GetMonitorInfoW(wintypes.HMONITOR(hmon), ctypes.byref(info))
+        device = DISPLAY_DEVICEW()
+        device.cb = ctypes.sizeof(DISPLAY_DEVICEW)
+        name = info.szDevice.replace("\\\\.\\", "")
+        if user32.EnumDisplayDevicesW(info.szDevice, 0, ctypes.byref(device), 0) and device.DeviceString:
+            name = device.DeviceString
+        r, w = info.rcMonitor, info.rcWork
+        found.append({"x": r.left, "y": r.top, "w": r.right - r.left, "h": r.bottom - r.top, "nom": name,
+                      "zone": (w.left, w.top, w.right - w.left, w.bottom - w.top),
+                      "principal": bool(info.dwFlags & 1)})  # fmt: skip
+        return 1
+
+    user32.EnumDisplayMonitors(None, None, proc_type(callback), 0)
+    return _describe_monitors(found)
+
+
+def _describe_monitors(monitors):
+    """Classe les écrans (principal d'abord) et note où chacun se trouve par rapport au principal."""
+    if not monitors:
+        return []
+    main = next((m for m in monitors if m["principal"]), monitors[0])
+    others = sorted((m for m in monitors if m is not main), key=lambda m: (m["y"], m["x"]))
+    mx, my = main["x"] + main["w"] / 2, main["y"] + main["h"] / 2
+    main["position"] = "principal"
+    for m in others:
+        dx, dy = m["x"] + m["w"] / 2 - mx, m["y"] + m["h"] / 2 - my
+        if abs(dy) > abs(dx):
+            m["position"] = "en haut" if dy < 0 else "en bas"
+        else:
+            m["position"] = "à gauche" if dx < 0 else "à droite"
+    return [main, *others]
+
+
+def _pick_monitor(monitors, ecran):
+    """Trouve l'écran désigné en langage courant : 'haut', 'principal', 'le grand', 'autre', '2', un nom..."""
+    e = str(ecran or "").lower().strip()
+    if not monitors or not e:
+        return None
+    digits = "".join(c for c in e if c.isdigit())
+    if digits and 1 <= int(digits) <= len(monitors):
+        return monitors[int(digits) - 1]
+    for word, position in (("haut", "en haut"), ("dessus", "en haut"), ("bas", "en bas"), ("dessous", "en bas"),
+                           ("gauche", "à gauche"), ("droit", "à droite")):  # fmt: skip
+        if word in e:
+            return next((m for m in monitors if m["position"] == position), None)
+    if any(k in e for k in ("principal", "premier")):
+        return monitors[0]
+    if "grand" in e:
+        return max(monitors, key=lambda m: m["w"] * m["h"])
+    if "petit" in e:
+        return min(monitors, key=lambda m: m["w"] * m["h"])
+    named = [m for m in monitors if m["nom"].lower() in e or e in m["nom"].lower()]
+    if named:  # « G241 » doit désigner le G241 et pas le G2412F : le nom le plus proche gagne
+        return min(named, key=lambda m: abs(len(m["nom"]) - len(e)))
+    if any(k in e for k in ("autre", "second", "deux", "secondaire")) and len(monitors) > 1:
+        return monitors[1]
+    return None
+
+
+def _windows():
+    import pygetwindow as gw
+
+    return [w for w in gw.getAllWindows() if w.title.strip() and w.visible]
+
+
+def _place(win, monitor, maximize=True):
+    x, y, w, h = monitor["zone"]
+    if win.isMinimized or win.isMaximized:
+        win.restore()
+        time.sleep(0.2)
+    win.resizeTo(min(max(win.width, 500), w - 60), min(max(win.height, 400), h - 60))
+    win.moveTo(x + (w - win.width) // 2, y + (h - win.height) // 2)
+    if maximize:
+        win.maximize()
+    try:
+        win.activate()
+    except Exception:  # noqa: BLE001 - pygetwindow signale parfois une « erreur » alors que tout a marché
+        pass
+
+
+def _place_new_window(hint, before, ecran, timeout=12):
+    """Attend la fenêtre qui vient de s'ouvrir (ou celle qui porte ce nom) et la met sur l'écran demandé."""
+    monitor = _pick_monitor(_monitors(), ecran)
+    if not monitor:
+        return f"Je n'ai pas trouvé l'écran « {ecran} »."
+    import pygetwindow as gw
+
+    hint, start = (hint or "").lower(), time.time()
+    while time.time() - start < timeout:
+        elapsed, wins = time.time() - start, _windows()
+        new = [w for w in wins if w._hWnd not in before]
+        candidates = [w for w in new if hint and hint in w.title.lower()]
+        if not candidates and elapsed > 3:  # application déjà ouverte : sa fenêtre existante, sinon toute nouvelle
+            candidates = [w for w in wins if hint and hint in w.title.lower()] or new
+        if not candidates and elapsed > 5:  # une page ouverte dans un onglet : la fenêtre passée au premier plan
+            active = gw.getActiveWindow()
+            if active and active.title.strip() and active.title != config.NAME.upper():
+                candidates = [active]
+        if candidates:
+            _place(candidates[0], monitor)
+            return f"Fenêtre « {candidates[0].title} » placée sur l'écran {monitor['position']}."
+        time.sleep(0.4)
+    return "La fenêtre est ouverte mais je ne l'ai pas trouvée pour la déplacer."
+
+
+@tool("Liste les écrans branchés (numéro, position par rapport à l'écran principal, taille, nom).")
+def lister_ecrans():
+    if not IS_WINDOWS:
+        return "Disponible seulement sous Windows."
+    return "\n".join(f"Écran {i} : {m['position']}, {m['w']}x{m['h']}, {m['nom']}" for i, m in enumerate(_monitors(), 1))
+
+
+@tool(
+    "Déplace une fenêtre ouverte (dont le titre contient le texte donné) sur un autre écran, en plein écran par défaut.",
+    {
+        "titre": {"type": "string", "description": "Texte contenu dans le titre de la fenêtre (ex : 'Discord', 'Chrome')"},
+        "ecran": ECRAN_PARAM,
+        "plein_ecran": {"type": "boolean", "description": "Agrandir la fenêtre sur cet écran (défaut : oui)"},
+    },
+    required=["titre", "ecran"],
+)
+def placer_fenetre(titre, ecran, plein_ecran=True):
+    if not IS_WINDOWS:
+        return "Disponible seulement sous Windows."
+    monitor = _pick_monitor(_monitors(), ecran)
+    if not monitor:
+        return f"Je n'ai pas trouvé l'écran « {ecran} ». Écrans disponibles :\n{lister_ecrans()}"
+    wins = [w for w in _windows() if titre.lower() in w.title.lower()]
+    if not wins:
+        return f"Aucune fenêtre contenant '{titre}'."
+    _place(wins[0], monitor, plein_ecran)
+    return f"Fenêtre « {wins[0].title} » placée sur l'écran {monitor['position']}."
 
 
 @tool(

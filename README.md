@@ -19,6 +19,8 @@ Après sa réponse, Jarvis continue d'écouter quelques secondes : tu enchaînes
 
 Au tout premier lancement, Jarvis télécharge ses modèles de reconnaissance vocale (environ 500 Mo) : il met quelques minutes à être prêt. Les réglages (voix, intelligence, sensibilité, mot de passe OBS, lancement au démarrage de Windows) sont dans le bouton **Réglages** de la fenêtre. Pour le désinstaller : Paramètres Windows > Applications > Jarvis.
 
+**Dossier de travail** : Jarvis range son travail dans `Documents\Jarvis` (bouton « Dossier de travail » des Réglages) : `CLAUDE.md` est sa fiche (qui tu es, comment il doit travailler : il la relit à chaque demande et tu peux la modifier), `projets\` reçoit les applications et documents qu'il crée, `memoire\` ses notes, `.claude\skills\` ses compétences (post LinkedIn, point du jour, petite application...). Dis-lui « apprends à... » pour qu'il s'en écrive une nouvelle. Ce dossier sert au mode abonnement (Claude Code).
+
 **Mises à jour** : à chaque lancement, Jarvis regarde s'il existe une nouvelle version sur son dépôt GitHub et l'installe tout seul (une petite fenêtre « Mise à jour de Jarvis » s'affiche quelques secondes). Tes réglages, sa mémoire et les outils qu'il s'est créés sont conservés. Si une nouvelle version ne démarre pas, il revient de lui-même à la précédente. La liste des changements est dans `NOUVEAUTES.md` ; l'interrupteur « Mises à jour automatiques » des Réglages permet de les couper.
 
 Pour le contrôle d'OBS : dans OBS (version 28 ou plus), menu **Outils > Paramètres du serveur WebSocket**, coche « Activer le serveur WebSocket », puis recopie le mot de passe dans les Réglages de Jarvis. Pour les clips de jeu, active aussi le **Replay Buffer** dans Paramètres > Sortie.
@@ -56,6 +58,12 @@ Publier une correction : modifier le code, augmenter le numéro dans `VERSION`, 
 - « Garde de 1 min 20 à 2 min 05. » / « Accélère-la deux fois. »
 - « Ajoute la musique fond.mp3 en fond, assez bas. » / « Compresse-la pour Discord. »
 - « Ouvre DaVinci Resolve. »
+
+**Créer**
+- « Développe-moi une petite page pour jouer au morpion. » (il la code dans son dossier de travail et l'ouvre)
+- « Rédige un post LinkedIn sur ma nouvelle vidéo. » / « Fais-moi le point. »
+- « Ouvre Discord sur l'écran du haut. » / « Mets Chrome sur l'autre écran. »
+- « Apprends à préparer la description de mes vidéos YouTube. » (nouvelle compétence)
 
 **Tout le reste** : s'il n'a pas d'outil dédié, il passe par PowerShell, ou pilote l'écran (capture, clic, clavier). Si tu lui demandes souvent la même chose : « Jarvis, crée-toi un outil pour ... ». Il écrit un plugin dans `plugins/` qui reste disponible pour toujours.
 

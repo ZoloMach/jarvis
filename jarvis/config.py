@@ -33,6 +33,8 @@ def reload():
     # Nom affiché et utilisé dans les phrases de l'assistant.
     g["NAME"] = get("JARVIS_NAME", "Jarvis")
     g["USER_NAME"] = get("JARVIS_USER_NAME", "Michel")
+    # Dossier de travail (fiche, mémoire, compétences, projets) ; par défaut Documents/Jarvis (voir workspace.py).
+    g["WORKSPACE"] = get("JARVIS_WORKSPACE")
 
     # Écoute
     g["WAKEWORD_MODEL"] = get("JARVIS_WAKEWORD", "hey_jarvis")

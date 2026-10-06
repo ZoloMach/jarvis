@@ -12,7 +12,7 @@ import webbrowser
 
 import customtkinter as ctk
 
-from . import config, updater
+from . import config, updater, workspace
 
 IS_WINDOWS = platform.system() == "Windows"
 ICON = config.ROOT / "jarvis.ico"
@@ -367,7 +367,7 @@ class SettingsDialog(Dialog):
         self.save_btn = ctk.CTkButton(row, text="Enregistrer", command=self.save,
                                       fg_color="#0077a8", hover_color="#0090cc")  # fmt: skip
         self.save_btn.pack(side="right")
-        ctk.CTkButton(row, text="Dossier de Jarvis", fg_color="#1f2a3d", hover_color="#2a3a55",
+        ctk.CTkButton(row, text="Dossier de travail", fg_color="#1f2a3d", hover_color="#2a3a55",
                       command=self.open_folder).pack(side="left")  # fmt: skip
 
     def label(self, text, **kw):
@@ -376,8 +376,10 @@ class SettingsDialog(Dialog):
         return lbl
 
     def open_folder(self):
+        """Ouvre le dossier de travail de Jarvis : sa fiche, sa mémoire, ses compétences et ses projets."""
+        folder = workspace.ensure()
         if IS_WINDOWS:
-            os.startfile(config.ROOT)  # noqa: S606
+            os.startfile(folder)  # noqa: S606
 
     def check_update(self):
         self.update_btn.configure(state="disabled", text="Recherche...")

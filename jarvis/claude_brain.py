@@ -20,7 +20,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import config, tools
+from . import config, tools, workspace
 from .brain import system_prompt
 
 IS_WINDOWS = platform.system() == "Windows"
@@ -29,10 +29,15 @@ NEW_CONSOLE = 0x00000010 if IS_WINDOWS else 0
 SESSION_IDLE = 20 * 60  # après 20 min sans parler, on repart sur une conversation neuve
 SILENCE_TIMEOUT = 90  # secondes sans aucun signe de Claude Code (hors outil en cours) avant abandon
 TOTAL_TIMEOUT = 10 * 60
-EXTRA_PROMPT = (
-    "\n\nTes outils Jarvis portent le préfixe mcp__jarvis__. Tu peux aussi chercher sur le web avec "
-    "WebSearch et lire une page avec WebFetch."
-)
+EXTRA_PROMPT = """
+
+Tes outils Jarvis portent le préfixe mcp__jarvis__. Tu peux aussi chercher sur le web (WebSearch, WebFetch).
+Ton dossier de travail est {workspace} : ta fiche CLAUDE.md, ta mémoire (memoire/), tes compétences \
+(.claude/skills/) et les projets que tu crées (projets/). Tu y lis et écris directement avec Read, Write et Edit, \
+par exemple pour coder une petite application ou rédiger un document, puis tu l'ouvres avec mcp__jarvis__ouvrir. \
+Utilise une compétence (Skill) dès qu'elle correspond à la demande."""
+# Outils de Claude Code utilisables par Jarvis : fichiers (écriture limitée au dossier de travail), web, compétences.
+NATIVE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "Skill"]
 
 
 class ClaudeCodeError(RuntimeError):
@@ -182,6 +187,26 @@ class ToolBridge:
         threading.Thread(target=self.server.serve_forever, daemon=True, name="jarvis-bridge").start()
 
 
+def _native_label(name, args, work):
+    """Ce qu'on affiche dans la fenêtre quand Claude Code utilise un de ses propres outils."""
+    target = str(args.get("file_path") or args.get("path") or "")
+    try:
+        target = str(Path(target).relative_to(work)) if target else ""
+    except ValueError:
+        pass
+    labels = {
+        "Write": f"écrit {target}",
+        "Edit": f"modifie {target}",
+        "Read": f"lit {target}",
+        "Glob": "cherche des fichiers",
+        "Grep": "cherche dans les fichiers",
+        "WebSearch": f"recherche sur le web : {args.get('query', '')}",
+        "WebFetch": f"lit la page {args.get('url', '')}",
+        "Skill": f"compétence {args.get('skill') or args.get('command') or ''}",
+    }
+    return labels.get(name, name).strip()
+
+
 def _python_for_bridge():
     # pythonw.exe n'a pas d'entrée/sortie standard fiable : on prend python.exe à côté s'il existe.
     exe = Path(sys.executable)
@@ -224,17 +249,26 @@ class ClaudeCodeBrain:
         if time.time() - self.last > SESSION_IDLE:
             self.session_id = None
         model = next((m for m in ("opus", "haiku") if m in config.MODEL), "sonnet")
+        try:
+            work = workspace.ensure()
+        except OSError as e:  # Documents inaccessible (synchronisation OneDrive...) : dossier de secours
+            log(f"Dossier de travail {workspace.path()} inaccessible ({e}), repli dans data/travail.")
+            work = config.DATA_DIR / "travail"
+            work.mkdir(exist_ok=True)
         cmd = [
             self.exe, "-p",
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--model", model,
-            "--system-prompt", system_prompt() + EXTRA_PROMPT,
+            "--system-prompt", system_prompt() + EXTRA_PROMPT.format(workspace=work),
             "--mcp-config", str(self.mcp_config), "--strict-mcp-config",
-            "--tools", "WebSearch,WebFetch",
-            # Personne ne peut répondre à une demande d'autorisation ici : tout ce qui n'est pas
-            # explicitement autorisé est refusé, au lieu de rester bloqué à attendre.
-            "--permission-mode", "dontAsk", "--permission-prompts", "none",
-            "--allowedTools", "mcp__jarvis", "WebSearch", "WebFetch",
+            # Seuls les réglages du dossier de travail comptent (pas ceux d'un autre usage de Claude Code).
+            "--setting-sources", "project",
+            "--tools", ",".join(NATIVE_TOOLS),
+            # Les modifications de fichiers sont acceptées dans le dossier de travail seulement. Personne ne peut
+            # répondre à une demande d'autorisation ici : le reste, s'il n'est pas autorisé ci-dessous, est
+            # refusé au lieu de rester bloqué à attendre.
+            "--permission-mode", "acceptEdits", "--permission-prompts", "none",
+            "--allowedTools", "mcp__jarvis", "Read", "Glob", "Grep", "WebSearch", "WebFetch", "Skill",
         ]  # fmt: skip
         if self.session_id:
             cmd += ["--resume", self.session_id]
@@ -244,7 +278,7 @@ class ClaudeCodeBrain:
         log(f"Appel de Claude Code ({model}, {'suite' if self.session_id else 'nouvelle conversation'}) : {text!r}")
         proc = self.proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="replace", cwd=str(config.DATA_DIR), env=env,
+            text=True, encoding="utf-8", errors="replace", cwd=str(work), env=env,
             creationflags=NO_WINDOW, start_new_session=not IS_WINDOWS,
         )  # fmt: skip
         err_lines = []
@@ -324,6 +358,12 @@ class ClaudeCodeBrain:
                     flush()
                 elif e.get("type") in ("content_block_stop", "message_stop"):
                     flush(all_text=True)
+            elif kind == "assistant":
+                for block in ev.get("message", {}).get("content", []):
+                    if block.get("type") == "tool_use" and not block.get("name", "").startswith("mcp__jarvis"):
+                        label = _native_label(block["name"], block.get("input") or {}, work)
+                        log(f"Claude Code : {label}")
+                        self.bridge.on_tool(label, block.get("input") or {})
             elif kind == "result":
                 final = ev
                 self.session_id = ev.get("session_id") or self.session_id
