@@ -1,0 +1,12 @@
+.env
+.venv/
+data/
+__pycache__/
+*.pyc
+Installer-Jarvis.exe
+Installer-Jarvis.zip
+# Fichiers posés par l installeur
+uv.exe
+cache/
+python/
+Desinstaller.exe

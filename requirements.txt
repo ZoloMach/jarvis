@@ -1,0 +1,21 @@
+anthropic>=0.40
+python-dotenv
+numpy
+sounddevice
+webrtcvad-wheels
+openwakeword>=0.6
+faster-whisper>=1.0
+edge-tts
+miniaudio
+pyttsx3
+pyautogui
+pyperclip
+pygetwindow
+psutil
+requests
+beautifulsoup4
+obsws-python
+pycaw; sys_platform == "win32"
+comtypes; sys_platform == "win32"
+customtkinter
+pillow
