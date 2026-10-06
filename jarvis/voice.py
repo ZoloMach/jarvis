@@ -29,6 +29,12 @@ EDGE_VOICES = {
     "Brian (léger accent américain)": "en-US-BrianMultilingualNeural",
     "William (léger accent australien)": "en-AU-WilliamMultilingualNeural",
 }
+# Ton de la voix (débit, hauteur), au choix dans les réglages.
+TONES = {
+    "Posé et grave, façon JARVIS": ("-8%", "-6Hz"),
+    "Naturel": ("+0%", "+0Hz"),
+    "Plus rapide": ("+10%", "+0Hz"),
+}
 DEFAULT_VOICE = "fr-FR-RemyMultilingualNeural"
 FALLBACK_VOICE = "fr-FR-HenriNeural"  # la plus ancienne, toujours disponible
 SAMPLE = "Bonjour {user}. Tous les systèmes sont opérationnels. Qu'est-ce que je lance pour vous ?"
@@ -92,17 +98,17 @@ class Speaker:
         if text:
             print(f"🤖 {config.NAME} : {text}")
             if self.enabled:
-                self._q.put(("text", text, None))
+                self._q.put(("text", text, (None, None)))
 
-    def preview(self, voice, text=None):
-        """Fait entendre une voix (bouton « Écouter » des réglages) sans changer celle de Jarvis."""
+    def preview(self, voice, tone=None, text=None):
+        """Fait entendre une voix et un ton (bouton « Écouter » des réglages) sans changer ceux de Jarvis."""
         self.stop()
         self._eleven_pause = 0.0
-        self._q.put(("text", text or SAMPLE.format(user=config.USER_NAME), voice))
+        self._q.put(("text", text or SAMPLE.format(user=config.USER_NAME), (voice, tone)))
 
     def beep(self, sound=BEEP_WAKE):
         if self.enabled:
-            self._q.put(("pcm", sound, None))
+            self._q.put(("pcm", sound, (None, None)))
 
     def stop(self):
         """Coupe la parole immédiatement et vide la file."""
@@ -129,11 +135,11 @@ class Speaker:
     # --- interne ---
     def _worker(self):
         while True:
-            kind, payload, voice = self._q.get()
+            kind, payload, (voice, tone) = self._q.get()
             self._busy.set()
             self._stop.clear()
             try:
-                pcm = payload if kind == "pcm" else self._synth(payload, voice)
+                pcm = payload if kind == "pcm" else self._synth(payload, voice, tone)
                 if pcm is not None and not self._stop.is_set():
                     self._play(pcm)
             except Exception as e:  # noqa: BLE001
@@ -151,8 +157,9 @@ class Speaker:
                 return
             time.sleep(0.02)
 
-    def _synth(self, text, voice=None):
+    def _synth(self, text, voice=None, tone=None):
         voice = voice or config.TTS_VOICE or DEFAULT_VOICE
+        rate, pitch = tone or (config.TTS_RATE, config.TTS_PITCH)
         if voice.startswith(ELEVEN_PREFIX):
             if config.ELEVENLABS_API_KEY and time.time() >= self._eleven_pause:
                 try:
@@ -163,7 +170,7 @@ class Speaker:
             voice = DEFAULT_VOICE
         for v in dict.fromkeys((voice, FALLBACK_VOICE)):
             try:
-                return self._edge(text, v)
+                return self._edge(text, v, rate, pitch)
             except Exception as e:  # noqa: BLE001
                 print(f"[voix] Edge TTS indisponible avec {v} ({e}).")
         print("[voix] Passage sur la voix hors ligne.")
@@ -177,13 +184,14 @@ class Speaker:
         url = f"{ELEVEN_URL}/text-to-speech/{voice_id}?output_format=pcm_{SR}"
         return np.frombuffer(_https(url, config.ELEVENLABS_API_KEY, body), dtype=np.int16)
 
-    def _edge(self, text, voice):
+    def _edge(self, text, voice, rate="+0%", pitch="+0Hz"):
         import edge_tts
         import miniaudio
 
         async def fetch():
             data = bytearray()
-            async for chunk in edge_tts.Communicate(text, voice, rate=config.TTS_RATE).stream():
+            tts = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
+            async for chunk in tts.stream():
                 if chunk["type"] == "audio":
                     data.extend(chunk["data"])
             return bytes(data)

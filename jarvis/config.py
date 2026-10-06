@@ -52,7 +52,9 @@ def reload():
 
     # Voix : une voix Edge (gratuite) ou « elevenlabs:<identifiant> » avec une clé ElevenLabs (voix plus humaines).
     g["TTS_VOICE"] = get("JARVIS_VOICE", "fr-FR-RemyMultilingualNeural")
-    g["TTS_RATE"] = get("JARVIS_VOICE_RATE", "+0%")
+    # Débit et hauteur : un peu plus lent et plus grave, la voix sonne plus posée (façon JARVIS du film).
+    g["TTS_RATE"] = get("JARVIS_VOICE_RATE", "-8%")
+    g["TTS_PITCH"] = get("JARVIS_VOICE_PITCH", "-6Hz")
     g["ELEVENLABS_API_KEY"] = get("ELEVENLABS_API_KEY", "")
     g["ELEVENLABS_MODEL"] = get("ELEVENLABS_MODEL", "eleven_flash_v2_5")
 

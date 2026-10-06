@@ -324,6 +324,13 @@ class SettingsDialog(Dialog):
         self.voice.pack(side="left")
         ctk.CTkButton(vrow, text="Écouter", width=90, fg_color="#1f2a3d", hover_color="#2a3a55",
                       command=self.preview_voice).pack(side="right")  # fmt: skip
+        from .voice import TONES
+
+        self.tones = TONES
+        self.tone = ctk.CTkOptionMenu(self.body, values=list(TONES), width=300)
+        current_tone = (config.TTS_RATE, config.TTS_PITCH)
+        self.tone.set(next((k for k, v in TONES.items() if v == current_tone), list(TONES)[0]))
+        self.tone.pack(padx=24, pady=(6, 0), anchor="w")
 
         self.label("Voix encore plus humaines (facultatif) : clé ElevenLabs, compte gratuit sur elevenlabs.io")
         erow = ctk.CTkFrame(self.body, fg_color="transparent")
@@ -398,7 +405,7 @@ class SettingsDialog(Dialog):
     def preview_voice(self):
         engine = getattr(self.master, "engine", None)
         if engine and engine.speaker:
-            engine.speaker.preview(self.voices[self.voice.get()])
+            engine.speaker.preview(self.voices[self.voice.get()], self.tones[self.tone.get()])
         else:
             self.eleven_msg.configure(text="Jarvis démarre encore : réessaie dans un instant.")
 
@@ -489,6 +496,8 @@ class SettingsDialog(Dialog):
             JARVIS_BRAIN=brain,
             JARVIS_USER_NAME=self.user.get().strip() or "Michel",
             JARVIS_VOICE=self.voices[self.voice.get()],
+            JARVIS_VOICE_RATE=self.tones[self.tone.get()][0],
+            JARVIS_VOICE_PITCH=self.tones[self.tone.get()][1],
             ELEVENLABS_API_KEY=self.eleven.get().strip(),
             JARVIS_WAKE_BY_NAME="1" if self.wake_name.get() else "0",
             JARVIS_CLAP="1" if self.clap.get() else "0",

@@ -94,6 +94,7 @@ Il est chargé au prochain démarrage.
 - `JARVIS_MODEL` : `claude-sonnet-5-5` (rapide, conseillé pour la voix) ou `claude-opus-5-5` (plus malin, plus lent et plus cher).
 - `JARVIS_WHISPER_MODEL` : `small` par défaut ; `medium` ou `large-v3` si tu as une carte graphique NVIDIA (meilleure compréhension) ; `base` si le PC est lent.
 - `JARVIS_VOICE` : `fr-FR-RemyMultilingualNeural` par défaut ; toute voix Edge (`fr-FR-VivienneMultilingualNeural`, `fr-CA-ThierryNeural`...) ou `elevenlabs:<identifiant>` avec `ELEVENLABS_API_KEY` (compte gratuit sur elevenlabs.io, environ 10 minutes de voix par mois).
+- `JARVIS_VOICE_RATE` / `JARVIS_VOICE_PITCH` : débit et hauteur de la voix Edge (`-8%` et `-6Hz` par défaut : plus posée et plus grave).
 - `JARVIS_WAKE_BY_NAME` / `JARVIS_WAKE_WHISPER_MODEL` : réveil par le nom (`1`, modèle `base`). Le modèle « Hey Jarvis » d'openWakeWord ne reconnaît que la prononciation anglaise ; `JARVIS_WAKEWORD_THRESHOLD` règle sa sensibilité.
 - `JARVIS_CLAP` / `JARVIS_CLAP_MIN_PEAK` : double clap (`0` pour le couper) ; monte `JARVIS_CLAP_MIN_PEAK` (4000) s'il se déclenche tout seul, baisse-le (1500) s'il n'entend pas tes claquements.
 - `JARVIS_FOLLOWUP_SECONDS` : durée d'écoute après chaque réponse.
