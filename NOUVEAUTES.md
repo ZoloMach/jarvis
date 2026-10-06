@@ -2,6 +2,9 @@
 
 Chaque version publiée ici est installée automatiquement au lancement de Jarvis.
 
+## 1.4.1
+- Correction : Jarvis fonctionne aussi avec une version plus ancienne de Claude Code (erreur « unknown option »), et la met à jour tout seul en arrière-plan.
+
 ## 1.4.0
 - Jarvis a son dossier de travail dans tes Documents (dossier « Jarvis ») : sa fiche CLAUDE.md, qu'il relit à chaque demande et que tu peux modifier, sa mémoire, ses compétences et ses projets.
 - Il peut coder de petites applications et des jeux (« développe-moi un morpion ») et rédiger des documents, puis te les ouvrir.

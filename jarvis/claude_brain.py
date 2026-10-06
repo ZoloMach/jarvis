@@ -38,6 +38,9 @@ par exemple pour coder une petite application ou rédiger un document, puis tu l
 Utilise une compétence (Skill) dès qu'elle correspond à la demande."""
 # Outils de Claude Code utilisables par Jarvis : fichiers (écriture limitée au dossier de travail), web, compétences.
 NATIVE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "Skill"]
+# Options récentes de Claude Code (nom -> nombre de valeurs qui suivent) : on les retire si la version installée
+# ne les connaît pas, au lieu d'échouer avec « unknown option ».
+OPTIONAL_FLAGS = {"--include-partial-messages": 0, "--setting-sources": 1, "--tools": 1, "--permission-prompts": 1}
 
 
 class ClaudeCodeError(RuntimeError):
@@ -79,13 +82,34 @@ def explain_error(message):
 
 
 def find_claude():
-    exe = shutil.which("claude")
-    if exe:
-        return exe
+    # L'installation officielle (celle que pose l'installeur de Jarvis) d'abord : une autre copie trouvée dans le
+    # PATH peut être ancienne.
     for p in (Path.home() / ".local" / "bin" / "claude.exe", Path.home() / ".local" / "bin" / "claude"):
         if p.exists():
             return str(p)
-    return None
+    return shutil.which("claude")
+
+
+def _output(args, timeout=60):
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                           stdin=subprocess.DEVNULL, env=_env(), creationflags=NO_WINDOW)  # fmt: skip
+        return (r.stdout + r.stderr).strip()
+    except Exception as e:  # noqa: BLE001
+        return f"erreur : {e}"
+
+
+def _drop_flags(cmd, flags):
+    """Retire de la ligne de commande les options de `flags` (et leurs valeurs)."""
+    out, skip = [], 0
+    for arg in cmd:
+        if skip:
+            skip -= 1
+        elif arg in flags:
+            skip = OPTIONAL_FLAGS[arg]
+        else:
+            out.append(arg)
+    return out
 
 
 def _env():
@@ -224,6 +248,8 @@ class ClaudeCodeBrain:
         self.last = 0.0
         self.proc = None
         self._cancelled = False
+        self.unsupported = set()
+        self._check_version()
         self.mcp_config = config.DATA_DIR / "mcp-jarvis.json"
         self.mcp_config.write_text(json.dumps({"mcpServers": {"jarvis": {
             "type": "stdio",
@@ -231,6 +257,22 @@ class ClaudeCodeBrain:
             "args": [str(Path(__file__).with_name("mcp_bridge.py"))],
             "env": {"JARVIS_BRIDGE_PORT": str(self.bridge.port), "JARVIS_BRIDGE_TOKEN": self.bridge.token},
         }}}), encoding="utf-8")  # fmt: skip
+
+    def _check_version(self):
+        """Repère les options que la version installée de Claude Code ne connaît pas."""
+        help_text = _output([self.exe, "--help"])
+        if "--output-format" in help_text:  # aide lisible : on s'y fie
+            self.unsupported = {f for f in OPTIONAL_FLAGS if f not in help_text}
+        version = _output([self.exe, "--version"]).splitlines()
+        log(f"Claude Code {version[0] if version else '?'} ({self.exe}) ; options absentes : "
+            f"{', '.join(sorted(self.unsupported)) or 'aucune'}.")  # fmt: skip
+        if self.unsupported:
+            threading.Thread(target=self._update_claude, daemon=True).start()
+
+    def _update_claude(self):
+        """Version ancienne : on met Claude Code à jour en arrière-plan, Jarvis profitera de tout au lancement suivant."""
+        log("Mise à jour de Claude Code en arrière-plan...")
+        log(f"Mise à jour de Claude Code : {_output([self.exe, 'update'], timeout=600)[-300:]}")
 
     def reset(self):
         self.session_id = None
@@ -272,6 +314,7 @@ class ClaudeCodeBrain:
         ]  # fmt: skip
         if self.session_id:
             cmd += ["--resume", self.session_id]
+        cmd = _drop_flags(cmd, self.unsupported)
         env = _env()
         env["MCP_TOOL_TIMEOUT"] = "900000"  # une confirmation peut prendre du temps
         t0 = time.time()
@@ -310,7 +353,7 @@ class ClaudeCodeBrain:
 
         threading.Thread(target=watchdog, daemon=True).start()
 
-        buf, final, first = "", None, True
+        buf, final, first, streamed = "", None, True, False
 
         def flush(all_text=False):
             nonlocal buf
@@ -354,16 +397,21 @@ class ClaudeCodeBrain:
                     if first:
                         log(f"Premiers mots reçus après {time.time() - t0:.1f} s.")
                         first = False
+                    streamed = True
                     buf += e["delta"]["text"]
                     flush()
                 elif e.get("type") in ("content_block_stop", "message_stop"):
                     flush(all_text=True)
             elif kind == "assistant":
                 for block in ev.get("message", {}).get("content", []):
+                    if block.get("type") == "text" and not streamed:  # Claude Code sans réponse mot à mot
+                        buf += block.get("text", "")
+                        flush(all_text=True)
                     if block.get("type") == "tool_use" and not block.get("name", "").startswith("mcp__jarvis"):
                         label = _native_label(block["name"], block.get("input") or {}, work)
                         log(f"Claude Code : {label}")
                         self.bridge.on_tool(label, block.get("input") or {})
+                streamed = False
             elif kind == "result":
                 final = ev
                 self.session_id = ev.get("session_id") or self.session_id
@@ -380,6 +428,11 @@ class ClaudeCodeBrain:
         if state["timeout"]:
             self.session_id = None
             raise ClaudeCodeError(f"Claude Code ne répond pas ({state['timeout']}).")
+        unknown = re.search(r"unknown option '(--[\w-]+)'", "".join(err_lines))
+        if final is None and unknown and unknown.group(1) in OPTIONAL_FLAGS and unknown.group(1) not in self.unsupported:
+            log(f"Option {unknown.group(1)} inconnue de cette version de Claude Code : nouvel essai sans elle.")
+            self.unsupported.add(unknown.group(1))
+            return self.ask(text, on_sentence, confirm, on_tool)
         if final is None or final.get("is_error"):
             detail = (final or {}).get("result") or "".join(err_lines)[-500:] or f"code {proc.returncode}"
             if final is None and self.session_id:
